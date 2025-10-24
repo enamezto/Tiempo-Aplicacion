@@ -5,21 +5,28 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.List;
 
 public class WeatherService {
     private static final String API_KEY = "84984066d6a7fe9f5c500ba06a758eae";
-    private static final String API_URL = "http://api.openweathermap.org/data/2.5/weather?q=%s&appid=%s&units=metric";
+    private static final String API_URL = "http://api.openweathermap.org/data/2.5/forecast?q=%s&appid=%s&units=metric&lang=es";
 
-    public String getWeather(String city) {
+    /**
+     * CAMBIO 1: Ahora devuelve un objeto ForecastResponse y lanza una excepción en caso de error.
+     */
+    public ForecastResponse getWeather(String city) throws WeatherException {
         try {
-            String urlString = String.format(API_URL, city, API_KEY);
+            String urlString = String.format(API_URL, city.replace(" ", "+"), API_KEY);
             URL url = new URL(urlString);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
 
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
-                return "Error: Ciudad no encontrada o clave de API incorrecta.";
+                if (responseCode == 404) {
+                    throw new WeatherException("Error: Ciudad no encontrada.");
+                }
+                throw new WeatherException("Error: (" + responseCode + ") al conectar con la API.");
             }
 
             BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
@@ -31,40 +38,59 @@ public class WeatherService {
             in.close();
             conn.disconnect();
 
-            return parseWeather(content.toString());
+            // CAMBIO 2: Parsea el JSON y lo devuelve directamente
+            Gson gson = new Gson();
+            ForecastResponse response = gson.fromJson(content.toString(), ForecastResponse.class);
+
+            if (response == null || response.list == null || response.list.isEmpty()) {
+                throw new WeatherException("No se pudieron obtener datos del pronóstico.");
+            }
+            return response;
+
         } catch (Exception e) {
-            return "Error al conectar con la API.";
+            // Envuelve la excepción original en nuestra excepción personalizada
+            throw new WeatherException("Error al conectar o parsear: " + e.getMessage());
         }
     }
 
-    private String parseWeather(String json) {
-        // La librería Gson mapea el JSON a un objeto Java
-        Gson gson = new Gson();
-        WeatherResponse response = gson.fromJson(json, WeatherResponse.class);
+    // CAMBIO 3: Ya no necesitamos los métodos 'parseWeather' ni 'formatDate' aquí.
+    // La UI se encargará de formatear.
 
-        if (response != null && response.main != null) {
-            return String.format(
-                    "Temperatura: %.1f °C\nSensación térmica: %.1f °C\nCondición: %s",
-                    response.main.temp,
-                    response.main.feels_like,
-                    response.weather[0].description
-            );
-        }
-        return "No se pudo obtener la información del tiempo.";
+    // CAMBIO 4: Las clases internas ahora son 'public static' para ser accesibles desde la UI.
+    public static class ForecastResponse {
+        public List<ForecastItem> list;
+        public City city;
     }
 
-    // Clases internas para mapear la estructura JSON
-    private static class WeatherResponse {
-        Main main;
-        Weather[] weather;
+    public static class ForecastItem {
+        public long dt;
+        public Main main;
+        public List<Weather> weather;
+        public Wind wind;
+        public double pop;
     }
 
-    private static class Main {
-        double temp;
-        double feels_like;
+    public static class Main {
+        public double temp;
+        public double feels_like;
+        public double temp_min;
+        public double temp_max;
+        public int pressure;
+        public int humidity;
     }
 
-    private static class Weather {
-        String description;
+    public static class Weather {
+        public String main;
+        public String description;
+    }
+
+    public static class Wind {
+        public double speed;
+        public int deg;
+    }
+
+    public static class City {
+        public String name;
+        public String country;
     }
 }
