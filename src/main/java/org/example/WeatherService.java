@@ -9,14 +9,35 @@ import java.util.List;
 
 public class WeatherService {
     private static final String API_KEY = "84984066d6a7fe9f5c500ba06a758eae";
-    private static final String API_URL = "http://api.openweathermap.org/data/2.5/forecast?q=%s&appid=%s&units=metric&lang=es";
+
+    // URL para buscar por nombre de ciudad
+    private static final String API_URL_CITY = "http://api.openweathermap.org/data/2.5/forecast?q=%s&appid=%s&units=metric&lang=es";
+
+    // NUEVA URL para buscar por coordenadas
+    private static final String API_URL_COORDS = "http://api.openweathermap.org/data/2.5/forecast?lat=%f&lon=%f&appid=%s&units=metric&lang=es";
+
 
     /**
-     * CAMBIO 1: Ahora devuelve un objeto ForecastResponse y lanza una excepción en caso de error.
+     * Obtiene el tiempo por nombre de ciudad
      */
     public ForecastResponse getWeather(String city) throws WeatherException {
+        String urlString = String.format(API_URL_CITY, city.replace(" ", "+"), API_KEY);
+        return getForecastFromApi(urlString);
+    }
+
+    /**
+     * NUEVO: Obtiene el tiempo por coordenadas geográficas
+     */
+    public ForecastResponse getWeatherByCoords(double lat, double lon) throws WeatherException {
+        String urlString = String.format(API_URL_COORDS, lat, lon, API_KEY);
+        return getForecastFromApi(urlString);
+    }
+
+    /**
+     * NUEVO: Método privado refactorizado para manejar la lógica de la API
+     */
+    private ForecastResponse getForecastFromApi(String urlString) throws WeatherException {
         try {
-            String urlString = String.format(API_URL, city.replace(" ", "+"), API_KEY);
             URL url = new URL(urlString);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
@@ -24,7 +45,7 @@ public class WeatherService {
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) {
                 if (responseCode == 404) {
-                    throw new WeatherException("Error: Ciudad no encontrada.");
+                    throw new WeatherException("Error: Datos no encontrados para la ubicación.");
                 }
                 throw new WeatherException("Error: (" + responseCode + ") al conectar con la API.");
             }
@@ -38,7 +59,6 @@ public class WeatherService {
             in.close();
             conn.disconnect();
 
-            // CAMBIO 2: Parsea el JSON y lo devuelve directamente
             Gson gson = new Gson();
             ForecastResponse response = gson.fromJson(content.toString(), ForecastResponse.class);
 
@@ -48,15 +68,12 @@ public class WeatherService {
             return response;
 
         } catch (Exception e) {
-            // Envuelve la excepción original en nuestra excepción personalizada
             throw new WeatherException("Error al conectar o parsear: " + e.getMessage());
         }
     }
 
-    // CAMBIO 3: Ya no necesitamos los métodos 'parseWeather' ni 'formatDate' aquí.
-    // La UI se encargará de formatear.
 
-    // CAMBIO 4: Las clases internas ahora son 'public static' para ser accesibles desde la UI.
+    // --- Clases internas (sin cambios) ---
     public static class ForecastResponse {
         public List<ForecastItem> list;
         public City city;
