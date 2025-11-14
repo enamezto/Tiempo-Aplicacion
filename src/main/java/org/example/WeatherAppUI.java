@@ -58,32 +58,82 @@ public class WeatherAppUI extends JFrame {
         setLayout(new BorderLayout());
         getContentPane().setBackground(COLOR_FONDO_PRINCIPAL);
 
-        // --- 2. Crear el panel dividido 50/50 ---
+        // --- 2. Añadir la cabecera completa a la parte superior (BorderLayout.NORTH) ---
+        add(createHeaderPanel(), BorderLayout.NORTH);
+
+        // --- 3. Crear el panel dividido 65/35 (Mapa/Pronóstico) ---
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setResizeWeight(0.5);
+        splitPane.setResizeWeight(0.65); // Mapa ocupa 65%
         splitPane.setEnabled(false);
         splitPane.setBorder(null);
 
-        // --- 3. Asignar los paneles izquierdo y derecho ---
+        // --- 4. Asignar los paneles izquierdo y derecho ---
         splitPane.setLeftComponent(createLeftPanel());
         splitPane.setRightComponent(createRightPanel());
 
+        // --- 5. Añadir el splitPane al centro de la ventana ---
         add(splitPane, BorderLayout.CENTER);
 
         setVisible(true);
     }
 
     /**
-     * Crea el panel de la IZQUIERDA (Mapa + Búsqueda)
+     * Helper para convertir Color a formato RGB para HTML
      */
-    private JPanel createLeftPanel() {
-        JPanel leftPanel = new JPanel(new BorderLayout());
-        leftPanel.setBackground(COLOR_FONDO_PANEL);
+    private String getRgbString(Color color) {
+        return "rgb(" + color.getRed() + "," + color.getGreen() + "," + color.getBlue() + ")";
+    }
 
-        // --- 1. El panel de búsqueda (arriba) ---
-        JPanel searchWrapperPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+    /**
+     * Crea el panel de la CABECERA (Logo + Búsqueda) que ocupa todo el ancho
+     */
+    private JPanel createHeaderPanel() {
+        // Panel Superior (Logo + Búsqueda)
+        JPanel topBarPanel = new JPanel(new BorderLayout());
+        topBarPanel.setBackground(COLOR_FONDO_PANEL);
+        topBarPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, COLOR_BORDE));
+
+        // 1a. Logo y Nombre de la Aplicación (Izquierda)
+        JPanel logoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 10));
+        logoPanel.setBackground(COLOR_FONDO_PANEL);
+
+        // --- Carga y escalado del logo horizontal ---
+        try {
+            // Se asume que 'MeteoMapLogoHorizontal.png' está en la carpeta de recursos
+            java.net.URL imageUrl = WeatherAppUI.class.getResource("/MeteoMapLogo.png");
+
+            if (imageUrl != null) {
+                ImageIcon originalIcon = new ImageIcon(imageUrl);
+
+                // ESCALADO MODIFICADO: Aumentado a 60px de alto
+                Image image = originalIcon.getImage();
+                Image scaledImage = image.getScaledInstance(330, 80, Image.SCALE_SMOOTH);
+                JLabel logoImageLabel = new JLabel(new ImageIcon(scaledImage));
+                logoPanel.add(logoImageLabel);
+            } else {
+                // Fallback si la imagen no se encuentra
+                JLabel iconLabel = new JLabel("☀️");
+                iconLabel.setFont(new Font("Arial", Font.BOLD, 24));
+                JLabel fallbackLabel = new JLabel("<html><b style='font-size: 1.5em; color: " + getRgbString(COLOR_PRIMARIO) + ";'>MeteoMap (Logo no encontrado)</b></html>");
+                fallbackLabel.setFont(new Font("Arial", Font.BOLD, 20));
+                logoPanel.add(iconLabel);
+                logoPanel.add(fallbackLabel);
+            }
+        } catch (Exception e) {
+            // Fallback en caso de error de carga
+            JLabel fallbackLabel = new JLabel("<html><b style='font-size: 1.5em; color: " + getRgbString(COLOR_PRIMARIO) + ";'>MeteoMap (Error)</b></html>");
+            fallbackLabel.setFont(new Font("Arial", Font.BOLD, 20));
+            logoPanel.add(fallbackLabel);
+        }
+        // --- Fin de carga del logo ---
+
+        topBarPanel.add(logoPanel, BorderLayout.WEST);
+
+        // 1b. El panel de búsqueda (Centro)
+        JPanel searchWrapperPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 15));
         searchWrapperPanel.setBackground(COLOR_FONDO_PANEL);
-        searchWrapperPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, COLOR_BORDE));
+        // Aumentamos el padding superior/inferior para compensar el logo más alto
+        searchWrapperPanel.setBorder(BorderFactory.createEmptyBorder(15, 0, 15, 0));
 
         this.cityField = new JTextField(20);
         this.cityField.setFont(new Font("Arial", Font.PLAIN, 14));
@@ -95,45 +145,64 @@ public class WeatherAppUI extends JFrame {
 
         searchWrapperPanel.add(cityLabel);
         searchWrapperPanel.add(cityField);
-        searchWrapperPanel.add(searchButton);
+        searchWrapperPanel.add(this.searchButton);
+
+        JPanel centerContainer = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        centerContainer.setBackground(COLOR_FONDO_PANEL);
+        centerContainer.add(searchWrapperPanel);
+
+        topBarPanel.add(centerContainer, BorderLayout.CENTER);
 
         // Acciones
-        searchButton.addActionListener(e -> onSearchByCity());
-        cityField.addActionListener(e -> onSearchByCity());
+        this.searchButton.addActionListener(e -> onSearchByCity());
+        this.cityField.addActionListener(e -> onSearchByCity());
 
-        leftPanel.add(searchWrapperPanel, BorderLayout.NORTH);
+        return topBarPanel;
+    }
 
-        // --- 2. El mapa (en el centro) ---
+
+    /**
+     * Crea el panel de la IZQUIERDA (SOLO Mapa)
+     */
+    private JPanel createLeftPanel() {
+        JPanel leftPanel = new JPanel(new BorderLayout());
+        leftPanel.setBackground(COLOR_FONDO_PANEL);
+
+        // --- 1. El mapa (en el centro) ---
         mapKit = new JXMapKit();
 
-        // 2a. Configuración del TileFactory (HTTPS + UserAgent)
-        TileFactoryInfo info = new OSMTileFactoryInfo("OpenStreetMap", "https://tile.openstreetmap.org");
+        // 1a. Configuración del TileFactory (HTTPS + UserAgent)
+        // MODIFICACIÓN para limitar el zoom máximo a 16
+        TileFactoryInfo info = new OSMTileFactoryInfo("OpenStreetMap", "https://tile.openstreetmap.org") {
+            @Override
+            public int getMaximumZoomLevel() {
+                return 16;
+            }
+        };
+
         DefaultTileFactory tileFactory = new DefaultTileFactory(info);
         tileFactory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36");
         mapKit.getMainMap().setTileFactory(tileFactory);
 
-        // 2b. Posición inicial (España) y controles
+        // 1b. Posición inicial (España) y controles
         GeoPosition initialPosition = new GeoPosition(40.4167, -3.7032);
         mapKit.setAddressLocation(initialPosition);
 
-        // --- MODIFICADO: Zoom más cercano (como en tu imagen) ---
         mapKit.setZoom(12);
-
         mapKit.setMiniMapVisible(false);
 
-        // --- NUEVO: Hacer los botones de zoom más grandes ---
+        // --- Hacer los botones de zoom más grandes ---
         JButton zoomInButton = mapKit.getZoomInButton();
         JButton zoomOutButton = mapKit.getZoomOutButton();
-        Font buttonFont = new Font("Arial", Font.BOLD, 18); // Fuente más grande
-        Insets buttonMargin = new Insets(2, 8, 2, 8); // (arriba/abajo, izq/der)
+        Font buttonFont = new Font("Arial", Font.BOLD, 18);
+        Insets buttonMargin = new Insets(2, 8, 2, 8);
 
         zoomInButton.setFont(buttonFont);
         zoomInButton.setMargin(buttonMargin);
         zoomOutButton.setFont(buttonFont);
         zoomOutButton.setMargin(buttonMargin);
-        // --- FIN DE LA MODIFICACIÓN ---
 
-        // 2c. Listener de clic en el mapa
+        // 1c. Listener de clic en el mapa
         mapKit.getMainMap().addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -157,7 +226,7 @@ public class WeatherAppUI extends JFrame {
         rightPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10)); // Padding
 
         // --- 1. Panel de 5 días (Arriba) ---
-        this.dailyForecastPanel = new JPanel(new GridLayout(1, 5, 10, 10));
+        this.dailyForecastPanel = new JPanel(new BorderLayout());
         this.dailyForecastPanel.setBackground(COLOR_FONDO_PRINCIPAL);
         rightPanel.add(dailyForecastPanel, BorderLayout.NORTH);
 
@@ -250,6 +319,16 @@ public class WeatherAppUI extends JFrame {
             String cityName = (currentForecast.city != null) ? currentForecast.city.name : "Ubicación seleccionada";
             updateHourlyPanelTitle("Pronóstico por Horas para: " + cityName);
 
+            // Zoom al mapa si tenemos coordenadas
+            if (currentForecast.city != null && currentForecast.city.coord != null) {
+                GeoPosition newPos = new GeoPosition(
+                        currentForecast.city.coord.lat,
+                        currentForecast.city.coord.lon
+                );
+                mapKit.setAddressLocation(newPos);
+                mapKit.setZoom(5); // Un nivel de zoom adecuado para una ciudad
+            }
+
             updateUIWithForecast();
         } catch (Exception ex) {
             String errorMsg = ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage();
@@ -273,7 +352,7 @@ public class WeatherAppUI extends JFrame {
 
 
     /**
-     * Actualiza la UI con los 5 paneles de días
+     * Actualiza la UI con los 5 paneles de días (MODIFICADO para layout grande/pequeño)
      */
     private void updateUIWithForecast() {
         if (currentForecast == null) return;
@@ -284,6 +363,14 @@ public class WeatherAppUI extends JFrame {
             String dayString = formatDate(item.dt, "yyyy-MM-dd");
             forecastsByDay.computeIfAbsent(dayString, k -> new ArrayList<>()).add(item);
         }
+
+        // --- Contenedor principal (Grande + Pequeños) ---
+        JPanel newDailyContainer = new JPanel(new BorderLayout(10, 0));
+        newDailyContainer.setBackground(COLOR_FONDO_PRINCIPAL);
+
+        // Panel para los 4 días pequeños (apilados verticalmente)
+        JPanel smallDaysPanel = new JPanel(new GridLayout(4, 1, 0, 10)); // 4 filas, 1 columna, 10px vertical gap
+        smallDaysPanel.setBackground(COLOR_FONDO_PRINCIPAL);
 
         int dayCount = 0;
         for (String day : forecastsByDay.keySet()) {
@@ -299,12 +386,26 @@ public class WeatherAppUI extends JFrame {
             }
 
             String iconCode = dayItems.get(dayItems.size() / 2).weather.get(0).icon;
-            String dateLabel = formatDate(dayItems.get(0).dt, "EEE, d MMM");
+            // EEEE para el nombre completo del día de la semana
+            String dateLabel = formatDate(dayItems.get(0).dt, "EEEE, d MMM");
 
-            JPanel panel = createDayPanel(dateLabel, iconCode, minTemp, maxTemp, dayItems);
-            dailyForecastPanel.add(panel);
+            if (dayCount == 0) {
+                // PRIMER DÍA: GRANDE
+                JPanel largePanel = createLargeDayPanel(dateLabel, iconCode, minTemp, maxTemp, dayItems);
+                newDailyContainer.add(largePanel, BorderLayout.WEST);
+            } else {
+                // DÍAS SIGUIENTES: PEQUEÑOS
+                JPanel smallPanel = createSmallDayPanel(dateLabel, iconCode, minTemp, maxTemp, dayItems);
+                smallDaysPanel.add(smallPanel);
+            }
             dayCount++;
         }
+
+        // Añadir los días pequeños al contenedor principal
+        newDailyContainer.add(smallDaysPanel, BorderLayout.CENTER);
+
+        // Añadir el contenedor principal al dailyForecastPanel
+        dailyForecastPanel.add(newDailyContainer, BorderLayout.CENTER);
 
         if (!forecastsByDay.isEmpty()) {
             displayDayForecast(forecastsByDay.values().iterator().next());
@@ -337,45 +438,117 @@ public class WeatherAppUI extends JFrame {
     }
 
     /**
-     * Crea cada uno de los 5 paneles de día
+     * Crea el panel GRANDE para el día actual
      */
-    private JPanel createDayPanel(String date, String iconCode, double minTemp, double maxTemp, List<ForecastItem> dayItems) {
+    private JPanel createLargeDayPanel(String date, String iconCode, double minTemp, double maxTemp, List<ForecastItem> dayItems) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
         panel.setBorder(BorderFactory.createCompoundBorder(
                 new LineBorder(COLOR_BORDE, 1),
-                BorderFactory.createEmptyBorder(10, 10, 10, 10)
+                // Usando el padding del usuario: (60, 110, 20, 110)
+                BorderFactory.createEmptyBorder(60, 110, 20, 110)
         ));
         panel.setBackground(COLOR_FONDO_PANEL);
 
         JLabel dateLabel = new JLabel(date, SwingConstants.CENTER);
         dateLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        dateLabel.setFont(new Font("Arial", Font.BOLD, 16));
-        dateLabel.setForeground(new Color(30, 30, 30));
+        dateLabel.setFont(new Font("Arial", Font.BOLD, 22)); // Más grande
+        dateLabel.setForeground(COLOR_PRIMARIO);
 
         String iconUrl = "http://openweathermap.org/img/wn/" + iconCode + "@2x.png";
-        JLabel iconLabel = new JLabel("<html><img src='" + iconUrl + "' width='50' height='50'></html>", SwingConstants.CENTER);
+        JLabel iconLabel = new JLabel("<html><img src='" + iconUrl + "' width='80' height='80'></html>", SwingConstants.CENTER); // Icono más grande
         iconLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        String tempString = String.format("<html><center><span style='font-size: 1.1em; color: #d9534f;'>%.0f°C</span><br><span style='color: #5bc0de;'>%.0f°C</span></center></html>", maxTemp, minTemp);
+        String tempString = String.format("<html><center>" +
+                "<span style='font-size: 2em; color: #d9534f;'>%.0f°C</span><br>" +
+                "<span style='font-size: 1.5em; color: #5bc0de;'>%.0f°C</span>" +
+                "</center></html>", maxTemp, minTemp);
         JLabel tempLabel = new JLabel(tempString, SwingConstants.CENTER);
         tempLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        tempLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+        tempLabel.setFont(new Font("Arial", Font.PLAIN, 18));
 
-        JButton detailsButton = new JButton("POR HORAS");
-        detailsButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        detailsButton.addActionListener(e -> displayDayForecast(dayItems));
-
-        styleButton(detailsButton, COLOR_SECUNDARIO, 12);
-
+        // Añadir componentes
         panel.add(dateLabel);
-        panel.add(Box.createRigidArea(new Dimension(0, 5)));
+        panel.add(Box.createRigidArea(new Dimension(0, 15)));
         panel.add(iconLabel);
-        panel.add(Box.createRigidArea(new Dimension(0, 5)));
+        panel.add(Box.createRigidArea(new Dimension(0, 15)));
         panel.add(tempLabel);
-        panel.add(Box.createRigidArea(new Dimension(0, 10)));
-        panel.add(detailsButton);
+
+        // Funcionalidad de clic
+        panel.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        panel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                displayDayForecast(dayItems);
+            }
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                panel.setBackground(COLOR_BORDE);
+            }
+            @Override
+            public void mouseExited(MouseEvent e) {
+                panel.setBackground(COLOR_FONDO_PANEL);
+            }
+        });
+
+        return panel;
+    }
+
+    /**
+     * Crea el panel PEQUEÑO para los días siguientes (4 en total)
+     */
+    private JPanel createSmallDayPanel(String date, String iconCode, double minTemp, double maxTemp, List<ForecastItem> dayItems) {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                new LineBorder(COLOR_BORDE, 1),
+                BorderFactory.createEmptyBorder(5, 5, 5, 5) // Menos padding
+        ));
+        panel.setBackground(COLOR_FONDO_PANEL);
+
+        JLabel dateLabel = new JLabel(date, SwingConstants.CENTER);
+        dateLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        dateLabel.setFont(new Font("Arial", Font.BOLD, 12)); // Pequeño
+        dateLabel.setForeground(new Color(50, 50, 50));
+
+        String iconUrl = "http://openweathermap.org/img/wn/" + iconCode + ".png"; // Usar el icono 1x (32x32)
+        JLabel iconLabel = new JLabel("<html><img src='" + iconUrl + "' width='32' height='32'></html>", SwingConstants.CENTER); // Icono más pequeño
+        iconLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        String tempString = String.format("<html><center>" +
+                "<span style='font-size: 0.9em; color: #d9534f;'>%.0f°C</span><br>" +
+                "<span style='font-size: 0.8em; color: #5bc0de;'>%.0f°C</span>" +
+                "</center></html>", maxTemp, minTemp);
+        JLabel tempLabel = new JLabel(tempString, SwingConstants.CENTER);
+        tempLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        // Añadir componentes
+        panel.add(dateLabel);
+        panel.add(Box.createRigidArea(new Dimension(0, 3)));
+        panel.add(iconLabel);
+        panel.add(Box.createRigidArea(new Dimension(0, 3)));
+        panel.add(tempLabel);
+
+        // Funcionalidad de clic
+        panel.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        panel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                displayDayForecast(dayItems);
+            }
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                panel.setBackground(COLOR_BORDE);
+            }
+            @Override
+            public void mouseExited(MouseEvent e) {
+                panel.setBackground(COLOR_FONDO_PANEL);
+            }
+        });
 
         return panel;
     }

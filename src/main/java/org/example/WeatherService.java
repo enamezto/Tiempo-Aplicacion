@@ -107,8 +107,15 @@ public class WeatherService {
         public int deg;
     }
 
+    // NUEVO: Clase para coordenadas
+    public static class Coord {
+        public double lat;
+        public double lon;
+    }
+
     public static class City {
         public String name;
         public String country;
+        public Coord coord; // NUEVO: Coordenadas
     }
 }
